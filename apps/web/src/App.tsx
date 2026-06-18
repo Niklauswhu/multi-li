@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LearnerProfile, Lesson } from "@multi-li/shared";
 import { getFeaturedLesson, getLearners, saveProgress } from "./api";
 import "./app.css";
@@ -127,11 +127,25 @@ function App() {
                 <p className="eyebrow">Activity path</p>
                 <h2>{progressPercent}% complete</h2>
               </div>
-              <div
+              <svg
                 className="progress-ring"
-                style={{ "--progress": `${progressPercent}%` } as CSSProperties}
+                viewBox="0 0 48 48"
+                role="img"
                 aria-label={`${progressPercent}% complete`}
-              />
+              >
+                <circle className="progress-ring-track" cx="24" cy="24" r="20" pathLength="100" />
+                <circle
+                  className="progress-ring-value"
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  pathLength="100"
+                  strokeDashoffset={100 - progressPercent}
+                />
+                <text x="24" y="24" textAnchor="middle" dominantBaseline="middle">
+                  {progressPercent}%
+                </text>
+              </svg>
             </div>
 
             <ul className="activity-list">
