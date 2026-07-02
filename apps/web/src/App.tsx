@@ -1,180 +1,142 @@
-import { useEffect, useMemo, useState } from "react";
-import type { LearnerProfile, Lesson } from "@multi-li/shared";
-import { getFeaturedLesson, getLearners, saveProgress } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import type { LearnerProfile } from "@multi-li/shared";
+import { getCompletions, getLearners, getReviewQueue } from "./api";
+import { HomePage } from "./pages/HomePage";
+import { LibraryPage } from "./pages/LibraryPage";
+import { PlanPage } from "./pages/PlanPage";
+import { ReaderPage } from "./pages/ReaderPage";
+import { ReviewPage } from "./pages/ReviewPage";
 import "./app.css";
 
-type LoadState =
-  | { status: "loading" }
-  | { status: "ready"; learners: LearnerProfile[]; lesson: Lesson }
-  | { status: "error"; message: string };
+type View =
+  | { name: "home" }
+  | { name: "library" }
+  | { name: "reader"; bookId: string }
+  | { name: "plan" }
+  | { name: "reviews" };
+
+type NavTab = {
+  view: Extract<View["name"], "home" | "library" | "plan" | "reviews">;
+  label: string;
+};
+
+const navTabs: NavTab[] = [
+  { view: "home", label: "Home" },
+  { view: "library", label: "Library" },
+  { view: "plan", label: "Study plan" },
+  { view: "reviews", label: "Reviews" }
+];
 
 function App() {
-  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
-  const [completedActivityIds, setCompletedActivityIds] = useState<string[]>([]);
-  const [saveMessage, setSaveMessage] = useState<string>("");
+  const [learner, setLearner] = useState<LearnerProfile | null>(null);
+  const [loadError, setLoadError] = useState<string>("");
+  const [view, setView] = useState<View>({ name: "home" });
+  const [dueReviewCount, setDueReviewCount] = useState(0);
+  const [completedBookIds, setCompletedBookIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    Promise.all([getLearners(), getFeaturedLesson()])
-      .then(([learnersResponse, lessonResponse]) => {
-        setLoadState({
-          status: "ready",
-          learners: learnersResponse.learners,
-          lesson: lessonResponse.lesson
-        });
-      })
-      .catch((error: unknown) => {
-        setLoadState({
-          status: "error",
-          message: error instanceof Error ? error.message : "Unable to load lessons"
-        });
-      });
+  const refreshLearnerData = useCallback((learnerId: string) => {
+    getReviewQueue(learnerId)
+      .then((response) => setDueReviewCount(response.queue.dueNow.length))
+      .catch(() => setDueReviewCount(0));
+    getCompletions(learnerId)
+      .then((response) =>
+        setCompletedBookIds([...new Set(response.completions.map((entry) => entry.bookId))])
+      )
+      .catch(() => setCompletedBookIds([]));
   }, []);
 
-  const activeLearner = loadState.status === "ready" ? loadState.learners[0] : undefined;
-  const lesson = loadState.status === "ready" ? loadState.lesson : undefined;
-  const progressPercent = useMemo(() => {
-    if (!lesson) {
-      return 0;
-    }
+  useEffect(() => {
+    getLearners()
+      .then((response) => {
+        const [firstLearner] = response.learners;
+        if (!firstLearner) {
+          setLoadError("No learner profiles available");
+          return;
+        }
+        setLearner(firstLearner);
+        refreshLearnerData(firstLearner.id);
+      })
+      .catch((error: unknown) =>
+        setLoadError(error instanceof Error ? error.message : "Unable to load learners")
+      );
+  }, [refreshLearnerData]);
 
-    return Math.round((completedActivityIds.length / lesson.activities.length) * 100);
-  }, [completedActivityIds.length, lesson]);
-
-  async function handleSaveProgress() {
-    if (!activeLearner || !lesson) {
-      return;
-    }
-
-    const response = await saveProgress({
-      learnerId: activeLearner.id,
-      lessonId: lesson.id,
-      completedActivityIds,
-      confidence: progressPercent === 100 ? "ready-to-share" : "getting-there"
-    });
-
-    setSaveMessage(`${response.message} at ${new Date(response.progress.recordedAt).toLocaleTimeString()}`);
-  }
-
-  function toggleActivity(activityId: string) {
-    setCompletedActivityIds((current) =>
-      current.includes(activityId)
-        ? current.filter((id) => id !== activityId)
-        : [...current, activityId]
+  if (loadError) {
+    return (
+      <main className="shell">
+        <p className="status status-error">Could not start Multi-Li: {loadError}</p>
+      </main>
     );
   }
 
+  if (!learner) {
+    return (
+      <main className="shell">
+        <p className="status">Loading Multi-Li...</p>
+      </main>
+    );
+  }
+
+  const activeTab = view.name === "reader" ? "library" : view.name;
+
   return (
     <main className="shell">
-      <section className="hero" aria-labelledby="page-title">
-        <div>
-          <p className="eyebrow">English learning for global children</p>
-          <h1 id="page-title">A playful path from home language to confident English.</h1>
-          <p className="hero-copy">
-            Multi-Li blends short lessons, age-aware pacing, and localized support for children
-            learning English outside English-speaking regions.
-          </p>
+      <nav className="top-nav" aria-label="Main navigation">
+        <span className="brand">Multi-Li</span>
+        <div className="nav-tabs">
+          {navTabs.map((tab) => (
+            <button
+              key={tab.view}
+              type="button"
+              className={activeTab === tab.view ? "nav-tab nav-tab-active" : "nav-tab"}
+              onClick={() => setView({ name: tab.view } as View)}
+            >
+              {tab.label}
+              {tab.view === "reviews" && dueReviewCount > 0 && (
+                <span className="nav-badge" aria-label={`${dueReviewCount} reviews due`}>
+                  {dueReviewCount}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
-        <div className="hero-card" aria-label="Platform readiness">
-          <span className="pulse" />
-          API connected
-          <strong>Frontend / Backend separated</strong>
-        </div>
-      </section>
+        <span className="nav-learner">Reader: {learner.displayName}</span>
+      </nav>
 
-      {loadState.status === "loading" && <p className="status">Loading lesson studio...</p>}
-
-      {loadState.status === "error" && (
-        <p className="status status-error">Could not load starter content: {loadState.message}</p>
+      {view.name === "home" && (
+        <HomePage
+          learner={learner}
+          onOpenLibrary={() => setView({ name: "library" })}
+          onOpenReviews={() => setView({ name: "reviews" })}
+          dueReviewCount={dueReviewCount}
+        />
       )}
 
-      {loadState.status === "ready" && activeLearner && lesson && (
-        <section className="dashboard" aria-label="Learner dashboard">
-          <article className="panel learner-panel">
-            <p className="eyebrow">Learner profile</p>
-            <h2>{activeLearner.displayName}'s weekly goal</h2>
-            <dl>
-              <div>
-                <dt>Age range</dt>
-                <dd>{activeLearner.ageRange}</dd>
-              </div>
-              <div>
-                <dt>Home locale</dt>
-                <dd>{activeLearner.homeLocale}</dd>
-              </div>
-              <div>
-                <dt>Goal</dt>
-                <dd>{activeLearner.weeklyGoalMinutes} minutes</dd>
-              </div>
-            </dl>
-          </article>
+      {view.name === "library" && (
+        <LibraryPage
+          completedBookIds={completedBookIds}
+          onOpenBook={(bookId) => setView({ name: "reader", bookId })}
+        />
+      )}
 
-          <article className="panel lesson-panel">
-            <p className="eyebrow">Featured lesson</p>
-            <h2>{lesson.title}</h2>
-            <p>{lesson.theme}</p>
-            <div className="word-list" aria-label="Target words">
-              {lesson.targetWords.map((word) => (
-                <span key={word}>{word}</span>
-              ))}
-            </div>
-            <blockquote>{lesson.sentenceFrame}</blockquote>
-            <p className="encouragement">{lesson.encouragement}</p>
-          </article>
+      {view.name === "reader" && (
+        <ReaderPage
+          bookId={view.bookId}
+          learnerId={learner.id}
+          onBackToLibrary={() => setView({ name: "library" })}
+          onBookCompleted={() => refreshLearnerData(learner.id)}
+          onGoToReviews={() => setView({ name: "reviews" })}
+        />
+      )}
 
-          <article className="panel progress-panel">
-            <div className="progress-heading">
-              <div>
-                <p className="eyebrow">Activity path</p>
-                <h2>{progressPercent}% complete</h2>
-              </div>
-              <svg
-                className="progress-ring"
-                viewBox="0 0 48 48"
-                role="img"
-                aria-label={`${progressPercent}% complete`}
-              >
-                <circle className="progress-ring-track" cx="24" cy="24" r="20" pathLength="100" />
-                <circle
-                  className="progress-ring-value"
-                  cx="24"
-                  cy="24"
-                  r="20"
-                  pathLength="100"
-                  strokeDashoffset={100 - progressPercent}
-                />
-                <text x="24" y="24" textAnchor="middle" dominantBaseline="middle">
-                  {progressPercent}%
-                </text>
-              </svg>
-            </div>
+      {view.name === "plan" && <PlanPage learnerId={learner.id} learnerName={learner.displayName} />}
 
-            <ul className="activity-list">
-              {lesson.activities.map((activity) => (
-                <li key={activity.id}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={completedActivityIds.includes(activity.id)}
-                      onChange={() => toggleActivity(activity.id)}
-                    />
-                    <span>
-                      <strong>{activity.title}</strong>
-                      {activity.prompt}
-                    </span>
-                  </label>
-                  <small>
-                    {activity.skill} · {activity.estimatedMinutes} min
-                  </small>
-                </li>
-              ))}
-            </ul>
-
-            <button type="button" onClick={handleSaveProgress}>
-              Save progress
-            </button>
-            {saveMessage && <p className="save-message">{saveMessage}</p>}
-          </article>
-        </section>
+      {view.name === "reviews" && (
+        <ReviewPage
+          learnerId={learner.id}
+          onReadBook={(bookId) => setView({ name: "reader", bookId })}
+          onQueueChanged={() => refreshLearnerData(learner.id)}
+        />
       )}
     </main>
   );

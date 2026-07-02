@@ -25,6 +25,12 @@ The web app runs on `http://localhost:5173` and proxies API requests to `http://
 - `npm run typecheck`: run TypeScript checks across workspaces.
 - `npm run lint`: run the repository's static checks.
 
+## Features
+
+- **Levelled reading library (Levels 1-5)**: original decodable readers inspired by graded reading schemes such as the Oxford Reading Tree. Each level adds longer sentences, richer stories, and new phonics focuses, and every book ends with a comprehension quiz.
+- **Study plan management**: per-learner plans with a current reading level, weekly book goal, and a daily review reminder hour, plus a weekly progress bar and reading log.
+- **Ebbinghaus timed reviews**: finishing a book automatically schedules five spaced reviews on days 1, 2, 4, 7, and 15 (the forgetting-curve intervals). The Reviews page splits tasks into due-now, upcoming, and completed buckets, and the navigation shows a due-review badge.
+
 ## Product direction
 
 The starter product models:

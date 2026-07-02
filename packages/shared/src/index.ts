@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export * from "./reading.js";
+export * from "./studyPlan.js";
+
 export const localeCodes = ["es-MX", "zh-CN", "pt-BR", "id-ID"] as const;
 export type LocaleCode = (typeof localeCodes)[number];
 
